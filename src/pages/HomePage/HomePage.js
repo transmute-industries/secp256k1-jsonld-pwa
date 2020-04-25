@@ -27,8 +27,17 @@ const { AssertionProofPurpose } = jsigs.purposes;
 const bip39 = require("bip39");
 var HDKey = require("hdkey");
 
+const schemaOrg = require("../../contexts/schema.org.json");
+
 const extendedDocumentLoader = (url) => {
-  console.log(url);
+  console.log("Loading: ", url);
+  if (url === "https://schema.org") {
+    return {
+      contextUrl: null, // this is for a context via a link header
+      document: schemaOrg, // this is the actual document that was loaded
+      documentUrl: url, // this is the actual context URL after redirects
+    };
+  }
   return defaultDocumentLoader(url);
 };
 
@@ -54,6 +63,8 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         url: "https://stanfordhealthcare.org/",
       },
     },
+    es256kSignedEditorObject: {},
+    es256krSignedEditorObject: {},
   });
   const {
     mnemonic,
@@ -94,7 +105,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         { ...editorObject },
         {
           compactProof: false,
-          documentLoader: defaultDocumentLoader,
+          documentLoader: extendedDocumentLoader,
           purpose: new AssertionProofPurpose(),
           suite: suite1,
         }
@@ -113,7 +124,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         { ...editorObject },
         {
           compactProof: false,
-          documentLoader: defaultDocumentLoader,
+          documentLoader: extendedDocumentLoader,
           purpose: new AssertionProofPurpose(),
           suite: suite2,
         }
