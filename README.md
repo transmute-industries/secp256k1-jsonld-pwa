@@ -1,4 +1,4 @@
-# Secp256k1
+# secp256k1.jsld.org
 
 WIP / demo secp256k1 JSON-LD in browser
 

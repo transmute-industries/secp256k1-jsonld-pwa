@@ -1,11 +1,11 @@
-import React from 'react';
+import React from "react";
 
 // import CameraAltIcon from '@material-ui/icons/CameraAlt';
 import HomeIcon from "@material-ui/icons/Home";
 
 import CodeIcon from "@material-ui/icons/Code";
 
-import history from '../../store/history';
+import history from "../../store/history";
 
 const rightHandAccountMenu = [
   // {
@@ -22,7 +22,7 @@ const rightHandAccountMenu = [
     label: "Home",
     onClick: () => {
       history.push("/");
-    }
+    },
   },
   {
     badgeContent: 0,
@@ -30,9 +30,12 @@ const rightHandAccountMenu = [
     ariaLabel: "source",
     icon: <CodeIcon />,
     onClick: () => {
-      window.open("https://github.com/transmute-industries/did-web", "_blank");
-    }
-  }
+      window.open(
+        "https://github.com/transmute-industries/secp256k1.jsld.org",
+        "_blank"
+      );
+    },
+  },
 ];
 
 export default rightHandAccountMenu;
