@@ -1,12 +1,20 @@
 import React from "react";
 import PropTypes from "prop-types";
+import _ from "lodash";
 
-import Typography from "@material-ui/core/Typography";
 import TextField from "@material-ui/core/TextField";
+import ExpansionPanel from "@material-ui/core/ExpansionPanel";
+import ExpansionPanelSummary from "@material-ui/core/ExpansionPanelSummary";
+import ExpansionPanelDetails from "@material-ui/core/ExpansionPanelDetails";
+import Typography from "@material-ui/core/Typography";
+import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
+
+import Button from "@material-ui/core/Button";
 import Grid from "@material-ui/core/Grid";
 import BasePage from "../BasePage/BasePage";
 import JSONEditor from "../../components/JSONEditor/JSONEditor";
 
+import makeDIDDoc from "./makeDIDDoc";
 const ES256K = require("@transmute/es256k-jws-ts");
 
 const {
@@ -19,6 +27,8 @@ const {
   EcdsaSecp256k1RecoveryMethod2020,
   EcdsaSecp256k1RecoverySignature2020,
 } = require("@transmute/lds-ecdsa-secp256k1-recovery2020");
+
+const secp256k1 = require("secp256k1");
 
 const jsigs = require("jsonld-signatures");
 
@@ -42,9 +52,11 @@ const extendedDocumentLoader = (url) => {
 };
 
 const HomePage = ({ tmui, setTmuiProp }) => {
+  // console.log(childkey);
+
   const [state, setState] = React.useState({
     mnemonic: "",
-    path: `m/0/2147483647'/1`,
+    path: "",
     publicKeyHex: "",
     privateKeyHex: "",
     editorObject: {
@@ -63,143 +75,117 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         url: "https://stanfordhealthcare.org/",
       },
     },
+    hasBeenSigned: false,
     es256kSignedEditorObject: {},
     es256krSignedEditorObject: {},
+    didDocument: {},
   });
-  const {
-    mnemonic,
-    path,
-    publicKeyHex,
-    privateKeyHex,
-    editorObject,
-    es256kSignedEditorObject,
-    es256krSignedEditorObject,
-  } = state;
+
+  const generateKeys = async () => {
+    const mnemonic = await bip39.generateMnemonic();
+    const seed = await bip39.mnemonicToSeed(mnemonic);
+    var hdkey = HDKey.fromMasterSeed(seed);
+    const path = `m’/44’/60’/0’/0`;
+    var childkey = hdkey.derive(path);
+    const publicKeyHex = childkey.publicKey.toString("hex");
+    const privateKeyHex = childkey.privateKey.toString("hex");
+    const didDocument = await makeDIDDoc(publicKeyHex);
+    setState({
+      ...state,
+      mnemonic,
+      path,
+      publicKeyHex,
+      privateKeyHex,
+      didDocument,
+    });
+  };
+
   React.useEffect(() => {
-    (async () => {
-      const mnemonic = bip39.generateMnemonic();
-      const seed = bip39.mnemonicToSeed(mnemonic);
-      var hdkey = HDKey.fromMasterSeed(seed);
-      var childkey = hdkey.derive(path);
-      // console.log(childkey);
-      const privateKeyHex = childkey.privateKey.toString("hex");
-      const publicKeyHex = childkey.publicKey.toString("hex");
-
-      const privateKeyJwk = await ES256K.keyUtils.privateJWKFromPrivateKeyHex(
-        privateKeyHex
-      );
-      const publicKeyJwk = await ES256K.keyUtils.publicJWKFromPublicKeyHex(
-        publicKeyHex
-      );
-
-      const suite1 = new EcdsaSecp256k1Signature2019({
-        key: new EcdsaSecp256k1KeyClass2019({
-          id: "did:example:123#key-0",
-          type: "EcdsaSecp256k1VerificationKey2019",
-          controller: "did:example:123",
-          privateKeyJwk,
-        }),
-      });
-
-      const es256kSignedEditorObject = await jsigs.sign(
-        { ...editorObject },
-        {
-          compactProof: false,
-          documentLoader: extendedDocumentLoader,
-          purpose: new AssertionProofPurpose(),
-          suite: suite1,
-        }
-      );
-
-      const suite2 = new EcdsaSecp256k1RecoverySignature2020({
-        key: new EcdsaSecp256k1RecoveryMethod2020({
-          id: "did:example:123#key-1",
-          type: "EcdsaSecp256k1RecoveryMethod2020",
-          controller: "did:example:123",
-          privateKeyJwk,
-        }),
-      });
-
-      const es256krSignedEditorObject = await jsigs.sign(
-        { ...editorObject },
-        {
-          compactProof: false,
-          documentLoader: extendedDocumentLoader,
-          purpose: new AssertionProofPurpose(),
-          suite: suite2,
-        }
-      );
-
-      const didDocument = {
-        "@context": [
-          "https://www.w3.org/ns/did/v1",
-          "https://identity.foundation/EcdsaSecp256k1RecoverySignature2020/lds-ecdsa-secp256k1-recovery2020-0.0.jsonld",
-        ],
-        id: "did:example:123",
-        assertionMethod: [
-          {
-            id: "did:example:123#key-0",
-            type: "EcdsaSecp256k1VerificationKey2019",
-            controller: "did:example:123",
-            publicKeyJwk,
-          },
-          {
-            id: "did:example:123#key-1",
-            type: "EcdsaSecp256k1RecoveryMethod2020",
-            controller: "did:example:123",
-            publicKeyJwk,
-          },
-        ],
-      };
-
-      console.log(es256kSignedEditorObject);
-      const es256kSignedEditorObjectVerified = await jsigs.verify(
-        es256kSignedEditorObject,
-        {
-          suite: suite1,
-          compactProof: false,
-          documentLoader: extendedDocumentLoader,
-          purpose: new AssertionProofPurpose({
-            // when controller is provided, document loader is not used to resolve keys.
-            controller: didDocument,
-          }),
-        }
-      );
-      // console.log(es256kSignedEditorObjectVerified);
-
-      suite2.verifier = {
-        verify: () => {
-          return true;
-        },
-      };
-
-      const es256krSignedEditorObjectVerified = await jsigs.verify(
-        es256krSignedEditorObject,
-        {
-          suite: suite2,
-          compactProof: false,
-          documentLoader: extendedDocumentLoader,
-          purpose: new AssertionProofPurpose({
-            // when controller is provided, document loader is not used to resolve keys.
-            controller: didDocument,
-          }),
-        }
-      );
-
-      console.log(es256krSignedEditorObjectVerified);
-
-      setState({
-        ...state,
-        mnemonic,
-        publicKeyHex,
-        privateKeyHex,
-        privateKeyJwk,
-        es256kSignedEditorObject,
-        es256kSignedEditorObjectVerified,
-        es256krSignedEditorObject,
-      });
-    })();
+    generateKeys();
+    // eslint-disable-next-line
   }, []);
+
+  const onChangeHandler = async () => {
+    const privateKeyJwk = await ES256K.keyUtils.privateJWKFromPrivateKeyHex(
+      state.privateKeyHex
+    );
+
+    const suite1 = new EcdsaSecp256k1Signature2019({
+      key: new EcdsaSecp256k1KeyClass2019({
+        id: "did:example:123#key-0",
+        type: "EcdsaSecp256k1VerificationKey2019",
+        controller: "did:example:123",
+        privateKeyJwk,
+      }),
+    });
+
+    const es256kSignedEditorObject = await jsigs.sign(
+      { ...state.editorObject },
+      {
+        compactProof: false,
+        documentLoader: extendedDocumentLoader,
+        purpose: new AssertionProofPurpose(),
+        suite: suite1,
+      }
+    );
+
+    const suite2 = new EcdsaSecp256k1RecoverySignature2020({
+      key: new EcdsaSecp256k1RecoveryMethod2020({
+        id: "did:example:123#key-1",
+        type: "EcdsaSecp256k1RecoveryMethod2020",
+        controller: "did:example:123",
+        privateKeyJwk,
+      }),
+    });
+
+    const es256krSignedEditorObject = await jsigs.sign(
+      { ...state.editorObject },
+      {
+        compactProof: false,
+        documentLoader: extendedDocumentLoader,
+        purpose: new AssertionProofPurpose(),
+        suite: suite2,
+      }
+    );
+
+    const es256kSignedEditorObjectVerified = await jsigs.verify(
+      es256kSignedEditorObject,
+      {
+        suite: suite1,
+        compactProof: false,
+        documentLoader: extendedDocumentLoader,
+        purpose: new AssertionProofPurpose({
+          // when controller is provided, document loader is not used to resolve keys.
+          controller: state.didDocument,
+        }),
+      }
+    );
+    // console.log(es256kSignedEditorObjectVerified);
+
+    const es256krSignedEditorObjectVerified = await jsigs.verify(
+      es256krSignedEditorObject,
+      {
+        suite: suite2,
+        compactProof: false,
+        documentLoader: extendedDocumentLoader,
+        purpose: new AssertionProofPurpose({
+          // when controller is provided, document loader is not used to resolve keys.
+          controller: state.didDocument,
+        }),
+      }
+    );
+
+    // console.log(es256krSignedEditorObjectVerified);
+
+    setState({
+      ...state,
+      es256kSignedEditorObject,
+      es256kSignedEditorObjectVerified,
+      es256krSignedEditorObject,
+      es256krSignedEditorObjectVerified,
+      hasBeenSigned: true,
+    });
+  };
 
   return (
     <BasePage tmui={tmui} setTmuiProp={setTmuiProp}>
@@ -207,67 +193,220 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         Secp256k1 JSON-LD
       </Typography>
 
-      <Grid container spacing={6}>
-        <Grid item xs={12}>
-          <TextField
-            label="BIP 39 Menmonic"
-            helperText="Be careful trusting entropy sources!"
-            variant="outlined"
-            fullWidth
-            value={mnemonic}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            label="HD Path"
-            variant="outlined"
-            fullWidth
-            value={path}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            label="Public Key Hex"
-            variant="outlined"
-            fullWidth
-            value={publicKeyHex}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            label="Private Key Hex"
-            variant="outlined"
-            fullWidth
-            value={privateKeyHex}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <JSONEditor
-            jsonObject={editorObject}
-            onChange={(data) => {
-              console.log("on change: ", data);
-            }}
-          />
-        </Grid>
+      <Typography style={{ marginBottom: "32px" }}>
+        This web page shows how secp256k1 can be used to created linked data
+        signatures{" "}
+        <a
+          href="https://github.com/decentralized-identity/lds-ecdsa-secp256k1-2019.js"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          EcdsaSecp256k1Signature2019
+        </a>
+        , and{" "}
+        <a
+          href="https://github.com/decentralized-identity/EcdsaSecp256k1RecoverySignature2020"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          EcdsaSecp256k1RecoverySignature2020
+        </a>
+        .
+      </Typography>
+      <div style={{ padding: "16px" }}>
+        <Grid container>
+          <Grid container spacing={6}>
+            <Grid item xs={6}>
+              <Grid item xs={12} style={{ marginBottom: "32px" }}>
+                <TextField
+                  label="BIP 39 Menmonic"
+                  helperText="Be careful trusting entropy sources!"
+                  variant="outlined"
+                  fullWidth
+                  onChange={async (event) => {
+                    const newMnemonic = event.target.value;
+                    const newSeed = await bip39.mnemonicToSeed(newMnemonic);
+                    const hdkey = HDKey.fromMasterSeed(newSeed);
+                    const childkey = hdkey.derive(state.path);
+                    const newPublicKeyHex = childkey.publicKey.toString("hex");
+                    const newPrivateKeyHex = childkey.privateKey.toString(
+                      "hex"
+                    );
+                    const didDocument = await makeDIDDoc(newPublicKeyHex);
+                    setState({
+                      ...state,
+                      publicKeyHex: newPublicKeyHex,
+                      privateKeyHex: newPrivateKeyHex,
+                      mnemonic: newMnemonic,
+                      didDocument,
+                    });
+                  }}
+                  value={state.mnemonic}
+                />
+              </Grid>
+              <Grid item xs={12} style={{ marginBottom: "32px" }}>
+                <TextField
+                  label="HD Path"
+                  variant="outlined"
+                  fullWidth
+                  onChange={async (event) => {
+                    const newPath = event.target.value;
+                    try {
+                      const seed = await bip39.mnemonicToSeed(state.mnemonic);
+                      const hdkey = HDKey.fromMasterSeed(seed);
+                      const childkey = hdkey.derive(newPath);
+                      const newPublicKeyHex = childkey.publicKey.toString(
+                        "hex"
+                      );
+                      const newPrivateKeyHex = childkey.privateKey.toString(
+                        "hex"
+                      );
+                      const didDocument = await makeDIDDoc(newPublicKeyHex);
+                      setState({
+                        ...state,
+                        path: newPath,
+                        publicKeyHex: newPublicKeyHex,
+                        privateKeyHex: newPrivateKeyHex,
+                        didDocument,
+                      });
+                    } catch (e) {
+                      console.error(e);
+                      setState({
+                        ...state,
+                        path: newPath,
+                        publicKeyHex: "",
+                        privateKeyHex: "",
+                        didDocument: {},
+                      });
+                    }
+                  }}
+                  value={state.path}
+                />
+              </Grid>
 
-        <Grid item xs={12}>
-          <JSONEditor
-            jsonObject={es256kSignedEditorObject}
-            onChange={(data) => {
-              console.log("on change: ", data);
-            }}
-          />
-        </Grid>
+              <Grid item xs={12} style={{ marginBottom: "32px" }}>
+                <TextField
+                  label="Private Key Hex"
+                  variant="outlined"
+                  fullWidth
+                  onChange={async (event) => {
+                    // try {
+                    const newPrivateKeyHex = event.target.value;
+                    // console.log({ newPrivateKeyHex });
+                    // // Then generate the public point/key corresponding to your secret key.
+                    let newPublicKeyHex;
+                    try {
+                      newPublicKeyHex = Buffer.from(
+                        await secp256k1.publicKeyCreate(
+                          new Uint8Array(Buffer.from(newPrivateKeyHex, "hex"))
+                        )
+                      ).toString("hex");
+                    } catch (e) {
+                      console.error(e);
+                    }
+                    // console.log({ newPublicKeyHex });
 
-        <Grid item xs={12}>
-          <JSONEditor
-            jsonObject={es256krSignedEditorObject}
-            onChange={(data) => {
-              console.log("on change: ", data);
-            }}
-          />
+                    let didDocument;
+                    try {
+                      didDocument = await makeDIDDoc(newPublicKeyHex);
+                    } catch (e) {
+                      console.error(e);
+                    }
+
+                    setState({
+                      ...state,
+                      path: "",
+                      mnemonic: "",
+                      didDocument,
+                      publicKeyHex: newPublicKeyHex,
+                      privateKeyHex: newPrivateKeyHex,
+                    });
+                  }}
+                  value={state.privateKeyHex}
+                />
+              </Grid>
+
+              <Grid item xs={12} style={{ marginBottom: "32px" }}>
+                <TextField
+                  label="Public Key Hex"
+                  variant="outlined"
+                  fullWidth
+                  disabled
+                  value={state.publicKeyHex}
+                  helperText={"Determined by Private Key Hex"}
+                />
+              </Grid>
+
+              <Grid item xs={12} style={{ marginBottom: "32px" }}>
+                <ExpansionPanel>
+                  <ExpansionPanelSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    aria-controls="panel1a-content"
+                    id="panel1a-header"
+                  >
+                    <Typography>DID Document</Typography>
+                  </ExpansionPanelSummary>
+                  <ExpansionPanelDetails>
+                    <JSONEditor jsonObject={state.didDocument} />
+                  </ExpansionPanelDetails>
+                </ExpansionPanel>
+              </Grid>
+            </Grid>
+            <Grid item xs={6}>
+              <Button
+                color={"primary"}
+                style={{ marginBottom: "16px", float: "left" }}
+                onClick={_.debounce(async (data) => {
+                  await generateKeys();
+                }, 500)}
+              >
+                Regenerate
+              </Button>
+              <Button
+                variant="contained"
+                color={"primary"}
+                style={{ marginBottom: "16px", float: "right" }}
+                onClick={_.debounce((data) => {
+                  onChangeHandler();
+                }, 2 * 1000)}
+              >
+                Sign Document
+              </Button>
+              <Grid item xs={12}>
+                <JSONEditor
+                  jsonObject={state.editorObject}
+                  onChange={_.debounce((data) => {
+                    setState({
+                      ...state,
+                      editorObject: JSON.parse(data),
+                    });
+                  }, 2 * 1000)}
+                />
+              </Grid>
+            </Grid>
+          </Grid>
+
+          {state.hasBeenSigned && (
+            <React.Fragment>
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom>
+                  Signed Documents
+                </Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Grid container spacing={6}>
+                  <Grid item xs={6}>
+                    <JSONEditor jsonObject={state.es256kSignedEditorObject} />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <JSONEditor jsonObject={state.es256krSignedEditorObject} />
+                  </Grid>
+                </Grid>
+              </Grid>
+            </React.Fragment>
+          )}
         </Grid>
-      </Grid>
+      </div>
     </BasePage>
   );
 };

@@ -18,8 +18,9 @@ class JSONEditor extends Component {
       <AceEditor
         mode="json"
         theme="github"
+        readOnly={onChange === undefined}
         style={{ ...this.props.style, width: "100%" }}
-        onChange={(data)=>{
+        onChange={(data) => {
           onChange(data);
         }}
         name="JSONEditorEditor"
@@ -32,7 +33,7 @@ class JSONEditor extends Component {
 
 JSONEditor.propTypes = {
   jsonObject: PropTypes.object.isRequired,
-  style: PropTypes.object
+  style: PropTypes.object,
 };
 
 export default JSONEditor;
