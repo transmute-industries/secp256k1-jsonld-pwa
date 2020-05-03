@@ -129,12 +129,17 @@ const HomePage = ({ tmui, setTmuiProp }) => {
       state.privateKeyHex
     );
 
+    const publicKeyJwk = await ES256K.keyUtils.publicJWKFromPublicKeyHex(
+      state.publicKeyHex
+    );
+
     const suite1 = new EcdsaSecp256k1Signature2019({
       key: new EcdsaSecp256k1KeyClass2019({
         id: "did:example:123#EcdsaSecp256k1VerificationKey2019",
         type: "EcdsaSecp256k1VerificationKey2019",
         controller: "did:example:123",
         privateKeyJwk,
+        publicKeyJwk,
       }),
     });
 
@@ -154,6 +159,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         type: "EcdsaSecp256k1RecoveryMethod2020",
         controller: "did:example:123",
         privateKeyJwk,
+        publicKeyJwk,
       }),
     });
 
@@ -173,6 +179,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         type: "SchnorrSecp256k1VerificationKey2019",
         controller: "did:example:123",
         privateKeyJwk,
+        publicKeyJwk,
       }),
     });
 
