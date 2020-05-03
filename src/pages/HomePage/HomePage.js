@@ -15,6 +15,12 @@ import BasePage from "../BasePage/BasePage";
 import JSONEditor from "../../components/JSONEditor/JSONEditor";
 
 import makeDIDDoc from "./makeDIDDoc";
+
+const {
+  SchnorrSecp256k1Signature2019,
+  SchnorrSecp256k1VerificationKey2019,
+} = require("@transmute/lds-ss256k");
+
 const ES256K = require("@transmute/es256k-jws-ts");
 
 const {
@@ -48,6 +54,13 @@ const extendedDocumentLoader = (url) => {
       documentUrl: url, // this is the actual context URL after redirects
     };
   }
+  if (url.split("#")[0] === "did:example:123") {
+    return {
+      contextUrl: null, // this is for a context via a link header
+      document: window.didDocument, // this is the actual document that was loaded
+      documentUrl: url, // this is the actual context URL after redirects
+    };
+  }
   return defaultDocumentLoader(url);
 };
 
@@ -60,7 +73,11 @@ const HomePage = ({ tmui, setTmuiProp }) => {
     publicKeyHex: "",
     privateKeyHex: "",
     editorObject: {
-      "@context": "https://schema.org",
+      "@context": [
+        "https://schema.org",
+        "https://identity.foundation/EcdsaSecp256k1RecoverySignature2020/lds-ecdsa-secp256k1-recovery2020-0.0.jsonld",
+        "https://identity.foundation/SchnorrSecp256k1Signature2019/contexts/schnorr-v1.json",
+      ],
       "@type": "SpecialAnnouncement",
       name: "Stanford announce COVID-19 testing facility",
       text:
@@ -78,6 +95,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
     hasBeenSigned: false,
     es256kSignedEditorObject: {},
     es256krSignedEditorObject: {},
+    ss256kSignedEditorObject: {},
     didDocument: {},
   });
 
@@ -90,6 +108,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
     const publicKeyHex = childkey.publicKey.toString("hex");
     const privateKeyHex = childkey.privateKey.toString("hex");
     const didDocument = await makeDIDDoc(publicKeyHex);
+    window.didDocument = didDocument;
     setState({
       ...state,
       mnemonic,
@@ -112,7 +131,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
 
     const suite1 = new EcdsaSecp256k1Signature2019({
       key: new EcdsaSecp256k1KeyClass2019({
-        id: "did:example:123#key-0",
+        id: "did:example:123#EcdsaSecp256k1VerificationKey2019",
         type: "EcdsaSecp256k1VerificationKey2019",
         controller: "did:example:123",
         privateKeyJwk,
@@ -148,6 +167,25 @@ const HomePage = ({ tmui, setTmuiProp }) => {
       }
     );
 
+    const suite3 = new SchnorrSecp256k1Signature2019({
+      key: new SchnorrSecp256k1VerificationKey2019({
+        id: "did:example:123#SchnorrSecp256k1VerificationKey2019",
+        type: "SchnorrSecp256k1VerificationKey2019",
+        controller: "did:example:123",
+        privateKeyJwk,
+      }),
+    });
+
+    const ss256kSignedEditorObject = await jsigs.sign(
+      { ...state.editorObject },
+      {
+        compactProof: false,
+        documentLoader: extendedDocumentLoader,
+        purpose: new AssertionProofPurpose(),
+        suite: suite3,
+      }
+    );
+
     const es256kSignedEditorObjectVerified = await jsigs.verify(
       es256kSignedEditorObject,
       {
@@ -160,7 +198,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
         }),
       }
     );
-    // console.log(es256kSignedEditorObjectVerified);
+    console.log(es256kSignedEditorObjectVerified);
 
     const es256krSignedEditorObjectVerified = await jsigs.verify(
       es256krSignedEditorObject,
@@ -175,7 +213,22 @@ const HomePage = ({ tmui, setTmuiProp }) => {
       }
     );
 
-    // console.log(es256krSignedEditorObjectVerified);
+    console.log(es256krSignedEditorObjectVerified);
+
+    const ss256kSignedEditorObjectVerified = await jsigs.verify(
+      ss256kSignedEditorObject,
+      {
+        suite: suite3,
+        compactProof: false,
+        documentLoader: extendedDocumentLoader,
+        purpose: new AssertionProofPurpose({
+          // when controller is provided, document loader is not used to resolve keys.
+          controller: state.didDocument,
+        }),
+      }
+    );
+
+    console.log(ss256kSignedEditorObjectVerified);
 
     setState({
       ...state,
@@ -183,6 +236,8 @@ const HomePage = ({ tmui, setTmuiProp }) => {
       es256kSignedEditorObjectVerified,
       es256krSignedEditorObject,
       es256krSignedEditorObjectVerified,
+      ss256kSignedEditorObject,
+      ss256kSignedEditorObjectVerified,
       hasBeenSigned: true,
     });
   };
@@ -195,24 +250,38 @@ const HomePage = ({ tmui, setTmuiProp }) => {
 
       <Typography style={{ marginBottom: "32px" }}>
         This web page shows how secp256k1 can be used to created linked data
-        signatures{" "}
-        <a
-          href="https://github.com/decentralized-identity/lds-ecdsa-secp256k1-2019.js"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          EcdsaSecp256k1Signature2019
-        </a>
-        , and{" "}
-        <a
-          href="https://github.com/decentralized-identity/EcdsaSecp256k1RecoverySignature2020"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          EcdsaSecp256k1RecoverySignature2020
-        </a>
-        .
+        signatures:
       </Typography>
+
+      <ul>
+        <li>
+          <a
+            href="https://github.com/decentralized-identity/lds-ecdsa-secp256k1-2019.js"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            EcdsaSecp256k1Signature2019
+          </a>
+        </li>
+        <li>
+          <a
+            href="https://github.com/decentralized-identity/SchnorrSecp256k1Signature2019"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            SchnorrSecp256k1Signature2019
+          </a>
+        </li>
+        <li>
+          <a
+            href="https://github.com/decentralized-identity/EcdsaSecp256k1RecoverySignature2020"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            EcdsaSecp256k1RecoverySignature2020
+          </a>
+        </li>
+      </ul>
       <div style={{ padding: "16px" }}>
         <Grid container>
           <Grid container spacing={6}>
@@ -233,6 +302,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
                       "hex"
                     );
                     const didDocument = await makeDIDDoc(newPublicKeyHex);
+                    window.didDocument = didDocument;
                     setState({
                       ...state,
                       publicKeyHex: newPublicKeyHex,
@@ -262,6 +332,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
                         "hex"
                       );
                       const didDocument = await makeDIDDoc(newPublicKeyHex);
+                      window.didDocument = didDocument;
                       setState({
                         ...state,
                         path: newPath,
@@ -309,6 +380,7 @@ const HomePage = ({ tmui, setTmuiProp }) => {
                     let didDocument;
                     try {
                       didDocument = await makeDIDDoc(newPublicKeyHex);
+                      window.didDocument = didDocument;
                     } catch (e) {
                       console.error(e);
                     }
@@ -395,11 +467,14 @@ const HomePage = ({ tmui, setTmuiProp }) => {
               </Grid>
               <Grid item xs={12}>
                 <Grid container spacing={6}>
-                  <Grid item xs={6}>
+                  <Grid item sm={12} md={4}>
                     <JSONEditor jsonObject={state.es256kSignedEditorObject} />
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid item sm={12} md={4}>
                     <JSONEditor jsonObject={state.es256krSignedEditorObject} />
+                  </Grid>
+                  <Grid item sm={12} md={4}>
+                    <JSONEditor jsonObject={state.ss256kSignedEditorObject} />
                   </Grid>
                 </Grid>
               </Grid>
